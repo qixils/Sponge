@@ -26,6 +26,7 @@ package org.spongepowered.common.data.provider;
 
 import io.leangen.geantyref.GenericTypeReflector;
 import io.leangen.geantyref.TypeToken;
+import net.minecraft.world.level.GameType;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.spongepowered.api.ResourceKey;
 import org.spongepowered.api.Sponge;
@@ -36,19 +37,27 @@ import org.spongepowered.api.data.DataRegistration;
 import org.spongepowered.api.data.DataTransactionResult;
 import org.spongepowered.api.data.ImmutableDataProviderBuilder;
 import org.spongepowered.api.data.Key;
+import org.spongepowered.api.data.Keys;
 import org.spongepowered.api.data.MutableDataProviderBuilder;
 import org.spongepowered.api.data.persistence.DataContainer;
 import org.spongepowered.api.data.persistence.DataContentUpdater;
 import org.spongepowered.api.data.persistence.DataStore;
 import org.spongepowered.api.data.persistence.DataView;
 import org.spongepowered.api.data.value.Value;
+import org.spongepowered.api.entity.living.player.gamemode.GameMode;
+import org.spongepowered.api.entity.living.player.server.ServerPlayer;
+import org.spongepowered.api.event.SpongeEventFactory;
+import org.spongepowered.api.event.data.ChangeDataHolderEvent;
 import org.spongepowered.api.registry.DefaultedRegistryReference;
 import org.spongepowered.api.util.OptBool;
+import org.spongepowered.common.SpongeCommon;
 import org.spongepowered.common.bridge.data.DataContainerHolder;
 import org.spongepowered.common.data.SpongeDataManager;
 import org.spongepowered.common.data.SpongeDataRegistration;
 import org.spongepowered.common.data.SpongeDataRegistrationBuilder;
 import org.spongepowered.common.data.persistence.datastore.SpongeDataStoreBuilder;
+import org.spongepowered.common.event.ShouldFire;
+import org.spongepowered.common.event.tracking.PhaseTracker;
 import org.spongepowered.common.util.CopyHelper;
 import org.spongepowered.common.util.TypeTokenUtil;
 
@@ -353,6 +362,25 @@ public class DataProviderRegistrator {
                         return registration.setAnd.apply(dataHolder, value);
                     }
                     if (registration.set != null) {
+                        if (ShouldFire.CHANGE_DATA_HOLDER_EVENT_VALUE_CHANGE) {
+                            final DataTransactionResult.Builder transaction = DataTransactionResult.builder()
+                                .success(Value.immutableOf(registration.key, value))
+                                .result(DataTransactionResult.Type.SUCCESS);
+                            if (registration.get != null) {
+                                Optional.ofNullable(registration.get.apply(dataHolder))
+                                    .ifPresent(oldValue -> transaction.replace(Value.immutableOf(registration.key, oldValue)));
+                            }
+                            final ChangeDataHolderEvent.ValueChange valueChange = SpongeEventFactory.createChangeDataHolderEventValueChange(
+                                PhaseTracker.SERVER.currentCause(),
+                                transaction.build(),
+                                (DataHolder.Mutable) dataHolder);
+                            SpongeCommon.post(valueChange);
+                            if (valueChange.isCancelled()) {
+                                // Don't set gamemode if someone doesn't want us to.
+                                return false;
+                            }
+                            return valueChange.endResult().successfulValue(registration.key).isPresent();
+                        }
                         registration.set.accept(dataHolder, value);
                         return true;
                     }

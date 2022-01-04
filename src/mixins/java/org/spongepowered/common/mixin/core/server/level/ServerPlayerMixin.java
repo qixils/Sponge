@@ -65,6 +65,7 @@ import net.minecraft.world.inventory.ResultSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.GameRules;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.portal.PortalInfo;
@@ -77,15 +78,20 @@ import org.objectweb.asm.Opcodes;
 import org.spongepowered.api.Sponge;
 import org.spongepowered.api.adventure.Audiences;
 import org.spongepowered.api.block.BlockSnapshot;
+import org.spongepowered.api.data.DataTransactionResult;
+import org.spongepowered.api.data.Keys;
 import org.spongepowered.api.data.type.SkinPart;
+import org.spongepowered.api.data.value.Value;
 import org.spongepowered.api.entity.living.Living;
 import org.spongepowered.api.entity.living.player.chat.ChatVisibility;
+import org.spongepowered.api.entity.living.player.gamemode.GameMode;
 import org.spongepowered.api.entity.living.player.server.ServerPlayer;
 import org.spongepowered.api.event.Cause;
 import org.spongepowered.api.event.CauseStackManager;
 import org.spongepowered.api.event.EventContextKeys;
 import org.spongepowered.api.event.SpongeEventFactory;
 import org.spongepowered.api.event.cause.entity.MovementTypes;
+import org.spongepowered.api.event.data.ChangeDataHolderEvent;
 import org.spongepowered.api.event.entity.ChangeEntityWorldEvent;
 import org.spongepowered.api.event.entity.DestructEntityEvent;
 import org.spongepowered.api.event.entity.MoveEntityEvent;
@@ -104,6 +110,7 @@ import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.Slice;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -596,6 +603,42 @@ public abstract class ServerPlayerMixin extends PlayerMixin implements SubjectBr
     )
     private void impl$closePreviousContainer(final net.minecraft.server.level.ServerPlayer self) {
         this.shadow$closeContainer();
+    }
+
+    @ModifyVariable(method = "setGameMode", at = @At("HEAD"), argsOnly = true)
+    private GameType impl$setGameMode(final GameType gameMode) {
+        final GameType currentGamemode = this.gameMode.getGameModeForPlayer();
+        final DataTransactionResult transaction = DataTransactionResult.builder()
+            .replace(Value.immutableOf(Keys.GAME_MODE, (GameMode) (Object) currentGamemode))
+            .success(Value.immutableOf(Keys.GAME_MODE, (GameMode) (Object) gameMode))
+            .result(DataTransactionResult.Type.SUCCESS)
+            .build();
+        final ChangeDataHolderEvent.ValueChange valueChange = SpongeEventFactory.createChangeDataHolderEventValueChange(
+            PhaseTracker.SERVER.currentCause(),
+            transaction,
+            (ServerPlayer) this);
+        Sponge.eventManager().post(valueChange);
+        if (valueChange.isCancelled()) {
+            // Don't set gamemode if someone doesn't want us to.
+            return currentGamemode;
+        }
+        return (GameType) (Object) valueChange.endResult().successfulValue(Keys.GAME_MODE)
+            .map(Value::get)
+            .orElse((GameMode) (Object) gameMode);
+    }
+
+    @Inject(
+        method = "setGameMode",
+        at = @At(
+            value = "INVOKE",
+            target = "Lnet/minecraft/server/level/ServerPlayerGameMode;setGameModeForPlayer(Lnet/minecraft/world/level/GameType;)V"
+        ),
+        cancellable = true
+    )
+    private void impl$cancelGameModeSetIfSame(final GameType gameMode, final CallbackInfo ci) {
+        if (this.gameMode.getGameModeForPlayer() == gameMode) {
+            ci.cancel();
+        }
     }
 
     /**
