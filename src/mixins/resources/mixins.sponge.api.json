@@ -445,7 +445,11 @@
         "minecraft.world.ticks.TickPriorityMixin_API",
         "service.permission.SubjectMixin_API",
         "world.LocatableBlockMixin_API",
-        "minecraft.network.chat.MessageSignatureMixin_API"
+        "minecraft.network.chat.MessageSignatureMixin_API",
+        "minecraft.world.level.block.state.properties.WallSideMixin_API",
+        "minecraft.world.level.block.state.properties.BambooLeavesMixin_API",
+        "minecraft.world.level.block.state.properties.BellAttachTypeMixin_API",
+        "minecraft.world.level.block.state.properties.FrontAndTopMixin_API"
     ],
     "client": [
         "minecraft.client.MinecraftMixin_API",

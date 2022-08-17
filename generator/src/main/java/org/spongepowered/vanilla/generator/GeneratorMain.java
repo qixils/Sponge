@@ -487,6 +487,7 @@ public final class GeneratorMain {
                 RegistryScope.SERVER
             ),
             new BlockStatePropertiesGenerator(),
+            new BlockStatePropertyKeysGenerator(),
             new RegistryEntriesGenerator<>(
                     "world.generation.feature",
                     "PlacedFeatures",
